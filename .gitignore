@@ -5,5 +5,5 @@ aigateway
 # IDE
 .idea/
 
-# Config (keep template but not local changes)
-# config.yaml is committed as a template
+# Config (commit config.yaml.example as template, ignore local config)
+config.yaml
