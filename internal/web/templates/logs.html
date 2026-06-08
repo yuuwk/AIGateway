@@ -97,7 +97,7 @@ async function loadLogs(page) {
   if (route) params.set('route', route);
 
   try {
-    const resp = await fetch('/api/logs?' + params);
+    const resp = await fetch('api/logs?' + params);
     const data = await resp.json();
     renderTable(data);
     renderPagination(data);
