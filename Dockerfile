@@ -5,6 +5,7 @@ RUN adduser -D -g '' appuser
 
 WORKDIR /app
 COPY aigateway /app/aigateway
+RUN chmod +x /app/aigateway
 
 USER appuser
 EXPOSE 8080
