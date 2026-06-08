@@ -1,50 +1,52 @@
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 # AI Gateway
 
-一个基于 Go 实现的轻量级 AI 代理网关，用于将不同前缀的请求转发到指定上游服务，并记录每次调用的请求、响应、状态码和耗时，提供简单的管理页面查看调用日志。
+A lightweight AI proxy gateway built with Go. It forwards requests based on route prefixes, records request and response data, and provides a simple admin page for browsing call logs.
 
-## 功能特性
+## Features
 
-- 按路由前缀转发请求到不同上游服务
-- 自动保留前缀后的路径和查询参数
-- 将调用日志写入 MySQL
-- 自动初始化 `call_logs` 表
-- 提供管理页面查看调用记录
-- 支持按路由筛选、分页和自动刷新
-- 支持 Docker 部署
+- Forwards requests to different upstream services by route prefix
+- Preserves the remaining path and query parameters after the prefix
+- Stores call logs in MySQL
+- Auto-creates the `call_logs` table on startup
+- Provides an admin page for viewing request history
+- Supports filtering, pagination, and auto-refresh for logs
+- Supports Docker-based deployment
 
-## 项目结构
+## Project Structure
 
 ```text
 AIGateway/
-├─ main.go                     # 程序入口
-├─ config.yaml                 # 运行配置文件（本地文件，已被 .gitignore 忽略）
-├─ docker-compose.yml          # 容器启动配置
-├─ Dockerfile                  # 镜像构建文件
-├─ aigateway.conf              # Nginx 反向代理示例
-├─ deploy.sh                   # Linux 部署脚本
+├─ main.go                     # Application entry point
+├─ config.yaml                 # Runtime config file, ignored by .gitignore
+├─ docker-compose.yml          # Container startup config
+├─ Dockerfile                  # Image build file
+├─ aigateway.conf              # Example Nginx reverse proxy config
+├─ deploy.sh                   # Linux deployment script
 └─ internal/
-   ├─ config/                  # 配置加载与校验
-   ├─ middleware/              # 请求日志中间件
-   ├─ proxy/                   # 反向代理逻辑
-   ├─ store/                   # MySQL 访问与表初始化
-   └─ web/                     # 管理页面与日志 API
+   ├─ config/                  # Config loading and validation
+   ├─ middleware/              # Request logging middleware
+   ├─ proxy/                   # Reverse proxy logic
+   ├─ store/                   # MySQL access and schema initialization
+   └─ web/                     # Admin page and log API
 ```
 
-## 运行要求
+## Requirements
 
-- Go 1.24.4 或更高版本
-- MySQL 5.7+/8.0+
-- Docker / Docker Compose（可选）
+- Go 1.24.4 or later
+- MySQL 5.7+ / 8.0+
+- Docker / Docker Compose (optional)
 
-## 配置说明
+## Configuration
 
-程序默认读取根目录下的 `config.yaml`，也可以通过参数指定：
+The application reads `config.yaml` from the project root by default, and you can also pass a custom path:
 
 ```bash
 ./aigateway -config config.yaml
 ```
 
-推荐配置模板如下：
+Recommended config template:
 
 ```yaml
 server:
@@ -64,130 +66,130 @@ routes:
     baseUrl: https://api.openai.com
 ```
 
-字段说明：
+Field descriptions:
 
-- `server.port`：网关监听端口
-- `mysql.*`：MySQL 连接信息
-- `routes[].prefix`：对外暴露的访问前缀
-- `routes[].baseUrl`：对应上游服务地址
+- `server.port`: gateway listen port
+- `mysql.*`: MySQL connection settings
+- `routes[].prefix`: public route prefix exposed by the gateway
+- `routes[].baseUrl`: upstream service base URL
 
-例如当配置为：
+For example, if the config is:
 
 - `prefix: /deepseek/anthropic`
 - `baseUrl: https://api.deepseek.com/anthropic`
 
-则请求：
+Then this request:
 
 ```text
 POST /deepseek/anthropic/v1/messages
 ```
 
-会被转发到：
+Will be forwarded to:
 
 ```text
 https://api.deepseek.com/anthropic/v1/messages
 ```
 
-## 本地启动
+## Local Run
 
-1. 准备 MySQL 数据库
-2. 在项目根目录创建 `config.yaml`
-3. 安装依赖并启动
+1. Prepare a MySQL database
+2. Create `config.yaml` in the project root
+3. Install dependencies and start the service
 
 ```bash
 go mod tidy
 go run . -config config.yaml
 ```
 
-如果需要编译后运行：
+If you prefer to build first:
 
 ```bash
 go build -o aigateway .
 ./aigateway -config config.yaml
 ```
 
-程序启动后会：
+On startup, the service will:
 
-- 连接 MySQL
-- 自动创建 `call_logs` 表
-- 注册配置中的所有代理路由
-- 启动管理页面和日志接口
+- Connect to MySQL
+- Create the `call_logs` table automatically
+- Register all configured proxy routes
+- Start the admin page and log API
 
-## 管理页面与接口
+## Admin Page and API
 
-- 管理页面：`http://localhost:8080/admin`
-- 日志接口：`http://localhost:8080/api/logs`
+- Admin page: `http://localhost:8080/admin`
+- Log API: `http://localhost:8080/api/logs`
 
-日志接口支持参数：
+Supported query parameters for the log API:
 
-- `route`：按路由前缀筛选
-- `page`：页码，默认从 1 开始
-- `pageSize`：每页数量，默认 20，最大 100
+- `route`: filter by route prefix
+- `page`: page number, starting from 1
+- `pageSize`: page size, default 20, maximum 100
 
-示例：
+Example:
 
 ```text
 GET /api/logs?route=/deepseek/anthropic&page=1&pageSize=20
 ```
 
-## 数据表说明
+## Database Table
 
-程序会自动创建如下日志表：
+The application auto-creates a log table with these fields:
 
-- `route`：命中的路由前缀
-- `method`：请求方法
-- `request_url`：请求 URL
-- `request_body`：请求体
-- `response_status`：响应状态码
-- `response_body`：响应体
-- `duration_ms`：请求耗时
-- `created_at`：记录创建时间
+- `route`: matched route prefix
+- `method`: HTTP method
+- `request_url`: request URL
+- `request_body`: request body
+- `response_status`: response status code
+- `response_body`: response body
+- `duration_ms`: request duration
+- `created_at`: record creation time
 
-为避免数据过大，请求体和响应体会被截断后再写入数据库。
+To avoid oversized records, request and response bodies are truncated before being written to the database.
 
-## Docker 部署
+## Docker Deployment
 
-项目已包含 `Dockerfile` 和 `docker-compose.yml`。
+The repository already includes `Dockerfile` and `docker-compose.yml`.
 
-### 方式一：直接使用 Docker Compose
+### Option 1: Docker Compose
 
-先准备 `config.yaml`，然后执行：
+Prepare `config.yaml`, then run:
 
 ```bash
 docker compose up -d --build
 ```
 
-默认映射：
+Default port mapping:
 
-- 容器内端口：`8080`
-- 宿主机端口：`${SERVER_PORT:-8080}`
+- Container port: `8080`
+- Host port: `${SERVER_PORT:-8080}`
 
-停止服务：
+Stop the service:
 
 ```bash
 docker compose down
 ```
 
-### 方式二：使用 deploy.sh
+### Option 2: deploy.sh
 
-适用于 Linux 环境：
+For Linux environments:
 
 ```bash
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
-说明：
+What the script does:
 
-- 脚本会尝试构建 Linux 二进制文件
-- 脚本会执行 `docker compose up -d --build`
-- 脚本会检查 `/admin` 页面是否可访问
+- Attempts to build the Linux binary
+- Runs `docker compose up -d --build`
+- Checks whether `/admin` becomes reachable
 
-## Nginx 反向代理示例
+## Nginx Reverse Proxy Example
 
-仓库中的 `aigateway.conf` 提供了一个示例配置，可将外部访问路径 `/aigateway/` 转发到本地 `8080` 端口。
+The included `aigateway.conf` shows how to expose the gateway under `/aigateway/` and forward requests to local port `8080`.
 
-例如：
+For example:
 
-- 外部访问：`http://your-host/aigateway/admin`
-- 实际转发：`http://127.0.0.1:8080/admin`
+- External URL: `http://your-host/aigateway/admin`
+- Forwarded to: `http://127.0.0.1:8080/admin`
