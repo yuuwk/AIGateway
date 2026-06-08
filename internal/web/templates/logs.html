@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway - Call History</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+  .header { background: #1a1a2e; color: #fff; padding: 16px 24px; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar label { font-weight: 500; font-size: 14px; }
+  .toolbar select, .toolbar input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  .toolbar button { padding: 6px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  .toolbar button:hover { background: #333; }
+  .toolbar button:disabled { opacity: 0.5; cursor: default; }
+  .auto-refresh { display: flex; align-items: center; gap: 6px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+  th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
+  tr:hover { background: #f0f4ff; }
+  .row-link { cursor: pointer; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge-ok { background: #d4edda; color: #155724; }
+  .badge-err { background: #f8d7da; color: #721c24; }
+  .detail-row { display: none; }
+  .detail-row.open { display: table-row; }
+  .detail-row td { padding: 0; }
+  .detail-box { background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; padding: 12px 16px; margin: 8px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+  .detail-label { color: #888; margin-right: 8px; }
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 16px; justify-content: center; }
+  .pagination span { font-size: 14px; color: #666; }
+  .loading { text-align: center; padding: 40px; color: #999; }
+  .empty { text-align: center; padding: 40px; color: #999; font-size: 14px; }
+  .stat { font-size: 13px; color: #666; margin-left: auto; }
+  @media (max-width: 768px) {
+    th, td { padding: 8px 6px; font-size: 12px; }
+    .toolbar { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>AI Gateway · Call History</h1>
+</div>
+<div class="container">
+  <div class="toolbar">
+    <label>Route:</label>
+    <select id="routeFilter">
+      <option value="">All Routes</option>
+      {{range .Routes}}
+      <option value="{{.}}">{{.}}</option>
+      {{end}}
+    </select>
+    <label>Per page:</label>
+    <select id="pageSize">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+    </select>
+    <button onclick="refresh()">Refresh</button>
+    <div class="auto-refresh">
+      <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+      <label for="autoRefresh">Auto-refresh (5s)</label>
+    </div>
+    <span class="stat" id="totalStats"></span>
+  </div>
+  <div id="content"><div class="loading">Loading...</div></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script>
+let currentPage = 1;
+let autoTimer = null;
+
+function refresh() {
+  loadLogs(currentPage);
+}
+
+function toggleAutoRefresh() {
+  if (document.getElementById('autoRefresh').checked) {
+    autoTimer = setInterval(() => loadLogs(currentPage), 5000);
+  } else {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+}
+
+async function loadLogs(page) {
+  currentPage = page;
+  const route = document.getElementById('routeFilter').value;
+  const pageSize = document.getElementById('pageSize').value;
+  const params = new URLSearchParams({ page, pageSize });
+  if (route) params.set('route', route);
+
+  try {
+    const resp = await fetch('/api/logs?' + params);
+    const data = await resp.json();
+    renderTable(data);
+    renderPagination(data);
+    document.getElementById('totalStats').textContent = data.total + ' records total';
+  } catch (err) {
+    document.getElementById('content').innerHTML = '<div class="loading">Failed to load: ' + err.message + '</div>';
+  }
+}
+
+function renderTable(data) {
+  if (!data.logs || data.logs.length === 0) {
+    document.getElementById('content').innerHTML = '<div class="empty">No call records found.</div>';
+    return;
+  }
+  let html = '<table><thead><tr>';
+  html += '<th>ID</th><th>Time</th><th>Route</th><th>Method</th><th>URL</th><th>Status</th><th>Duration</th>';
+  html += '</tr></thead><tbody>';
+  data.logs.forEach(log => {
+    const statusClass = log.response_status >= 200 && log.response_status < 300 ? 'badge-ok' : 'badge-err';
+    html += '<tr class="row-link" onclick="toggleDetail(' + log.id + ')">';
+    html += '<td>' + log.id + '</td>';
+    html += '<td>' + formatTime(log.created_at) + '</td>';
+    html += '<td>' + esc(log.route) + '</td>';
+    html += '<td>' + esc(log.method) + '</td>';
+    html += '<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(log.request_url) + '">' + esc(log.request_url) + '</td>';
+    html += '<td><span class="badge ' + statusClass + '">' + log.response_status + '</span></td>';
+    html += '<td>' + log.duration_ms + 'ms</td>';
+    html += '</tr>';
+    html += '<tr class="detail-row" id="detail-' + log.id + '">';
+    html += '<td colspan="7">';
+    html += '<div class="detail-box"><span class="detail-label">Request Body:</span>' + esc(log.request_body || '(empty)') + '</div>';
+    html += '<div class="detail-box"><span class="detail-label">Response Body:</span>' + esc(log.response_body || '(empty)') + '</div>';
+    html += '</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderPagination(data) {
+  const totalPages = Math.ceil(data.total / data.pageSize) || 1;
+  let html = '';
+  html += '<button onclick="loadLogs(1)" ' + (data.page <= 1 ? 'disabled' : '') + '>First</button>';
+  html += '<button onclick="loadLogs(' + (data.page - 1) + ')" ' + (data.page <= 1 ? 'disabled' : '') + '>Prev</button>';
+  html += '<span>Page ' + data.page + ' / ' + totalPages + '</span>';
+  html += '<button onclick="loadLogs(' + (data.page + 1) + ')" ' + (data.page >= totalPages ? 'disabled' : '') + '>Next</button>';
+  html += '<button onclick="loadLogs(' + totalPages + ')" ' + (data.page >= totalPages ? 'disabled' : '') + '>Last</button>';
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function toggleDetail(id) {
+  const row = document.getElementById('detail-' + id);
+  row.classList.toggle('open');
+}
+
+function formatTime(ts) {
+  if (!ts) return '-';
+  const d = new Date(ts);
+  return d.toLocaleString();
+}
+
+function esc(s) {
+  if (!s) return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+// Initial load
+loadLogs(1);
+</script>
+</body>
+</html>
