@@ -1,11 +1,14 @@
 package web
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"aigateway/internal/config"
 	"aigateway/internal/store"
@@ -38,6 +41,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/logs":
 		h.serveLogsAPI(w, r)
 	default:
+		if strings.HasPrefix(r.URL.Path, "/api/logs/") {
+			h.serveLogDetailAPI(w, r)
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
@@ -69,4 +76,26 @@ func (h *Handler) serveLogsAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) serveLogDetailAPI(w http.ResponseWriter, r *http.Request) {
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/logs/")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "invalid log id", http.StatusBadRequest)
+		return
+	}
+
+	logEntry, err := h.store.GetLogByID(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logEntry)
 }

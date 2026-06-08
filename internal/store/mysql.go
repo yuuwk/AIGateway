@@ -93,7 +93,7 @@ func (s *Store) QueryLogs(route string, page, pageSize int) (*LogsResult, error)
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+		pageSize = 10
 	}
 	offset := (page - 1) * pageSize
 
@@ -118,9 +118,7 @@ func (s *Store) QueryLogs(route string, page, pageSize int) (*LogsResult, error)
 	if route != "" {
 		selectQuery = `
 		SELECT id, route, method, request_url,
-		       COALESCE(request_body, ''),
 		       COALESCE(response_status, 0),
-		       COALESCE(response_body, ''),
 		       COALESCE(duration_ms, 0),
 		       created_at
 		FROM call_logs
@@ -131,9 +129,7 @@ func (s *Store) QueryLogs(route string, page, pageSize int) (*LogsResult, error)
 	} else {
 		selectQuery = `
 		SELECT id, route, method, request_url,
-		       COALESCE(request_body, ''),
 		       COALESCE(response_status, 0),
-		       COALESCE(response_body, ''),
 		       COALESCE(duration_ms, 0),
 		       created_at
 		FROM call_logs
@@ -152,8 +148,7 @@ func (s *Store) QueryLogs(route string, page, pageSize int) (*LogsResult, error)
 	for rows.Next() {
 		var l CallLog
 		if err := rows.Scan(&l.ID, &l.Route, &l.Method, &l.RequestURL,
-			&l.RequestBody, &l.ResponseStatus, &l.ResponseBody,
-			&l.DurationMs, &l.CreatedAt); err != nil {
+			&l.ResponseStatus, &l.DurationMs, &l.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scanning log row: %w", err)
 		}
 		logs = append(logs, l)
@@ -172,6 +167,31 @@ func (s *Store) QueryLogs(route string, page, pageSize int) (*LogsResult, error)
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+// GetLogByID fetches a single log entry with full request and response bodies.
+func (s *Store) GetLogByID(id int64) (*CallLog, error) {
+	var l CallLog
+	query := `
+	SELECT id, route, method, request_url,
+	       COALESCE(request_body, ''),
+	       COALESCE(response_status, 0),
+	       COALESCE(response_body, ''),
+	       COALESCE(duration_ms, 0),
+	       created_at
+	FROM call_logs
+	WHERE id = ?`
+	if err := s.db.QueryRow(query, id).Scan(
+		&l.ID, &l.Route, &l.Method, &l.RequestURL,
+		&l.RequestBody, &l.ResponseStatus, &l.ResponseBody,
+		&l.DurationMs, &l.CreatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
+		return nil, fmt.Errorf("querying log by id: %w", err)
+	}
+	return &l, nil
 }
 
 // DistinctRoutes returns the set of route prefixes that have been logged.

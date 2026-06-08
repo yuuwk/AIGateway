@@ -56,8 +56,8 @@
     </select>
     <label>Per page:</label>
     <select id="pageSize">
-      <option value="10">10</option>
-      <option value="20" selected>20</option>
+      <option value="10" selected>10</option>
+      <option value="20">20</option>
       <option value="50">50</option>
       <option value="100">100</option>
     </select>
@@ -75,6 +75,11 @@
 <script>
 let currentPage = 1;
 let autoTimer = null;
+const appBasePath = window.location.pathname.replace(/\/admin\/?$/, '');
+
+function apiUrl(path) {
+  return (appBasePath || '') + path;
+}
 
 function refresh() {
   loadLogs(currentPage);
@@ -97,7 +102,7 @@ async function loadLogs(page) {
   if (route) params.set('route', route);
 
   try {
-    const resp = await fetch('api/logs?' + params);
+    const resp = await fetch(apiUrl('/api/logs?') + params);
     const data = await resp.json();
     renderTable(data);
     renderPagination(data);
@@ -128,8 +133,9 @@ function renderTable(data) {
     html += '</tr>';
     html += '<tr class="detail-row" id="detail-' + log.id + '">';
     html += '<td colspan="7">';
-    html += '<div class="detail-box"><span class="detail-label">Request Body:</span>' + esc(log.request_body || '(empty)') + '</div>';
-    html += '<div class="detail-box"><span class="detail-label">Response Body:</span>' + esc(log.response_body || '(empty)') + '</div>';
+    html += '<div id="detail-content-' + log.id + '" data-loaded="false" data-loading="false">';
+    html += '<div class="detail-box">Click to load request and response bodies.</div>';
+    html += '</div>';
     html += '</td></tr>';
   });
   html += '</tbody></table>';
@@ -147,9 +153,40 @@ function renderPagination(data) {
   document.getElementById('pagination').innerHTML = html;
 }
 
-function toggleDetail(id) {
+async function toggleDetail(id) {
   const row = document.getElementById('detail-' + id);
+  const isOpen = row.classList.contains('open');
   row.classList.toggle('open');
+  if (!isOpen) {
+    await loadDetail(id);
+  }
+}
+
+async function loadDetail(id) {
+  const container = document.getElementById('detail-content-' + id);
+  if (!container || container.dataset.loaded === 'true' || container.dataset.loading === 'true') {
+    return;
+  }
+
+  container.dataset.loading = 'true';
+  container.innerHTML = '<div class="detail-box">Loading details...</div>';
+
+  try {
+    const resp = await fetch(apiUrl('/api/logs/' + id));
+    if (!resp.ok) {
+      throw new Error('HTTP ' + resp.status);
+    }
+
+    const log = await resp.json();
+    container.innerHTML =
+      '<div class="detail-box"><span class="detail-label">Request Body:</span>' + esc(log.request_body || '(empty)') + '</div>' +
+      '<div class="detail-box"><span class="detail-label">Response Body:</span>' + esc(log.response_body || '(empty)') + '</div>';
+    container.dataset.loaded = 'true';
+  } catch (err) {
+    container.innerHTML = '<div class="detail-box">Failed to load details: ' + esc(err.message) + '</div>';
+  } finally {
+    container.dataset.loading = 'false';
+  }
 }
 
 function formatTime(ts) {

@@ -12,6 +12,7 @@
 - 自动初始化 `call_logs` 表
 - 提供管理页面查看调用记录
 - 支持按路由筛选、分页和自动刷新
+- 落库请求/响应内容（超长体会截断），便于审计 Agent 行为（如 Prompt 缓存使用情况）
 - 支持 Docker 部署
 
 ## 项目结构
@@ -146,6 +147,20 @@ GET /api/logs?route=/deepseek/anthropic&page=1&pageSize=20
 - `created_at`：记录创建时间
 
 为避免数据过大，请求体和响应体会被截断后再写入数据库。
+
+## 审计 Agent 缓存行为
+
+网关会落库每次调用的请求体与响应体，因此可以将 AI 编程 Agent（如 Claude Code）的 API 流量指向本网关，事后根据日志分析其是否存在**刻意绕过 Prompt 缓存**等行为。
+
+常见检查项：
+
+- **响应中的 `cache_read_input_tokens` / `cache_creation_input_tokens`**（流式响应的 `message_start` / `message_delta` 事件）：正常的多轮对话应在后续请求中出现较大的 `cache_read`，每轮仅新增少量 `input_tokens`。
+- **请求体中的 `cache_control` 标记**：系统提示、工具定义等静态内容应使用 `cache_control: { type: "ephemeral" }`；日期、git 状态、billing 头等易变信息应放在**缓存断点之外**。
+- **每轮全量重传**：预热后若每轮 `input_tokens` 仍然很高且 `cache_read` 长期接近 0，说明缓存未被复用。
+- **请求间隔**：Anthropic 兼容的 Prompt 缓存 TTL 约为 5 分钟，超过该间隔缓存自然失效；若频繁出现 270–300 秒的空闲间隔，可能存在不利于缓存的调度方式。
+- **并行侧请求**：标题生成、安全检测等并行调用是独立的 API 请求，本身不能说明主对话在刻意绕过缓存。
+
+可从管理页面导出日志，或直接查询 MySQL 按会话分析。需注意请求体/响应体在入库前会截断至 65,535 字符，超长对话在 `request_body` 中可能看起来相同，但线上实际请求并不相同——应以 `response_body` 中的 `usage` 字段作为 token 与缓存指标的准确依据。
 
 ## Docker 部署
 

@@ -51,6 +51,7 @@ func main() {
 	mux.Handle("/admin", webHandler)
 	mux.Handle("/admin/", webHandler)
 	mux.Handle("/api/logs", webHandler)
+	mux.Handle("/api/logs/", webHandler)
 
 	// Proxy routes
 	for _, route := range cfg.Routes {

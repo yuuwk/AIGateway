@@ -12,6 +12,7 @@ A lightweight AI proxy gateway built with Go. It forwards requests based on rout
 - Auto-creates the `call_logs` table on startup
 - Provides an admin page for viewing request history
 - Supports filtering, pagination, and auto-refresh for logs
+- Persists request/response payloads (truncated when oversized) for auditing agent behavior (e.g. prompt cache usage)
 - Supports Docker-based deployment
 
 ## Project Structure
@@ -146,6 +147,20 @@ The application auto-creates a log table with these fields:
 - `created_at`: record creation time
 
 To avoid oversized records, request and response bodies are truncated before being written to the database.
+
+## Auditing Agent Cache Behavior
+
+Because every proxied call is persisted with its request body and response body, you can point an AI coding agent (such as Claude Code) at this gateway and later inspect the logs to see whether the agent is **deliberately bypassing prompt cache** or simply using the API normally.
+
+Typical checks:
+
+- **`cache_read_input_tokens` / `cache_creation_input_tokens`** in streaming responses (`message_start` / `message_delta` events): a healthy multi-turn session should show large `cache_read` on follow-up calls and only small incremental `input_tokens` per turn.
+- **`cache_control` markers** in the request body: static blocks (system prompt, tools) should use `cache_control: { type: "ephemeral" }`; volatile data (date, git status, billing headers) should stay **outside** cached breakpoints.
+- **Repeated full-context sends**: if `input_tokens` stays high every turn while `cache_read` stays near zero after warmup, that suggests cache is not being reused.
+- **Timing gaps**: Anthropic-compatible prompt cache TTL is about 5 minutes; gaps longer than that naturally expire the cache, but repeated 270–300s idle intervals can be a sign of cache-unfriendly pacing.
+- **Side requests**: parallel calls (title generation, security checks, etc.) are separate API requests and do not by themselves prove intentional cache bypass on the main conversation.
+
+Export logs from the admin page or query MySQL directly, then analyze patterns across a session. Note that bodies are truncated at 65,535 characters, so very long conversations may look identical in `request_body` even when the live request differed—use `usage` fields in `response_body` as the source of truth for token and cache metrics.
 
 ## Docker Deployment
 
